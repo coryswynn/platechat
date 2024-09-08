@@ -127,11 +127,17 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
         ? commentData.upvotedBy.filter((uid) => uid !== userId)
         : [...commentData.upvotedBy, userId];
 
-      // Update Firestore and make sure the upvote/downvote is logged
+      // Update Firestore and make sure the upvote is logged
       await updateDoc(commentRef, {
         upvotes: updatedUpvotes,
         upvotedBy: updatedUpvotedBy,
       });
+
+      // Update the local state for upvoted comments by user
+      setUpvotedCommentsByUser((prev) => ({
+        ...prev,
+        [userId]: updatedUpvotedBy,
+      }));
     }
   };
 
@@ -150,14 +156,19 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
         ? commentData.upvotedBy.filter((uid) => uid !== userId)
         : [...commentData.upvotedBy, userId];
 
-      // Update Firestore and make sure the downvote/upvote is logged
+      // Update Firestore and make sure the downvote is logged
       await updateDoc(commentRef, {
         upvotes: updatedUpvotes,
         upvotedBy: updatedUpvotedBy,
       });
+
+      // Update the local state for upvoted comments by user
+      setUpvotedCommentsByUser((prev) => ({
+        ...prev,
+        [userId]: updatedUpvotedBy,
+      }));
     }
   };
-
 
   const getCommentsByUser = async (userId: string): Promise<Comment[]> => {
     const q = query(collection(db, 'comments'), where('userId', '==', userId));

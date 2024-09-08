@@ -8,21 +8,27 @@ interface CommentProps {
   comment: CommentType;
   allComments: CommentType[];
   currentUserId: string;
-  upvotedComments: string[]; // Includes upvotedComments for determining the upvote state
+  upvotedComments: string[];
 }
 
-export default function Comment({ comment, allComments, currentUserId, upvotedComments }: CommentProps) {
+export default function Comment({
+  comment,
+  allComments,
+  currentUserId,
+  upvotedComments,
+}: CommentProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedContent, setEditedContent] = useState(comment.content);
   const [showReplyForm, setShowReplyForm] = useState(false);
   const { updateComment, deleteComment, upvoteComment, downvoteComment } = useLocalDb();
-  const [hasUpvoted, setHasUpvoted] = useState(false);
-  const [isVoting, setIsVoting] = useState(false); // Prevent multiple rapid clicks
+  const [hasUpvoted, setHasUpvoted] = useState(false); // Updated default state
+  const [isVoting, setIsVoting] = useState(false);
 
-  // Set `hasUpvoted` state when the component mounts or when `upvotedComments` changes
+  // Check if the user has already upvoted based on the 'upvotedBy' array
   useEffect(() => {
-    setHasUpvoted(upvotedComments.includes(comment.id));
-  }, [upvotedComments, comment.id]);
+    const userHasUpvoted = comment.upvotedBy.includes(currentUserId); // Check if current user ID is in upvotedBy array
+    setHasUpvoted(userHasUpvoted); // Set state based on this check
+  }, [comment.upvotedBy, currentUserId]); // Dependencies include upvotedBy and currentUserId
 
   const handleEdit = async () => {
     await updateComment(comment.id, editedContent);
@@ -38,20 +44,19 @@ export default function Comment({ comment, allComments, currentUserId, upvotedCo
   };
 
   const handleVote = async () => {
-    if (isVoting) return; // Prevent multiple simultaneous votes
+    if (isVoting) return;
     setIsVoting(true);
 
     try {
       if (!hasUpvoted) {
-        await upvoteComment(comment.id, currentUserId); // Sync upvote with Firestore
+        await upvoteComment(comment.id, currentUserId);
       } else {
-        await downvoteComment(comment.id, currentUserId); // Sync downvote with Firestore
+        await downvoteComment(comment.id, currentUserId);
       }
-      setHasUpvoted(!hasUpvoted); // Toggle local state after Firestore sync
     } catch (error) {
       console.error('Error handling vote:', error);
     } finally {
-      setIsVoting(false); // Re-enable voting after the operation completes
+      setIsVoting(false);
     }
   };
 
@@ -67,16 +72,15 @@ export default function Comment({ comment, allComments, currentUserId, upvotedCo
   return (
     <div className="flex space-x-4">
       <div className="flex flex-col items-center">
-        {/* Upvote button */}
         <button
           onClick={handleVote}
-          className={`hover:text-yellow-400 flex flex-col items-center ${
-            hasUpvoted ? 'text-yellow-400' : 'text-blue-400'
+          className={`flex flex-col items-center ${
+            hasUpvoted ? 'text-yellow-400 hover:text-yellow-500' : 'text-blue-400 hover:text-yellow-500'
           }`}
-          disabled={isVoting} // Disable button during voting
+          disabled={isVoting}
         >
           <svg
-            className={`w-6 h-6 ${hasUpvoted ? 'text-yellow-400' : ''}`}
+            className="w-6 h-6"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -89,11 +93,7 @@ export default function Comment({ comment, allComments, currentUserId, upvotedCo
               d="M5 15l7-7 7 7"
             />
           </svg>
-          <span
-            className={`text-sm ${
-              hasUpvoted ? 'text-yellow-400' : 'text-blue-400'
-            }`}
-          >
+          <span>
             {comment.upvotes}
           </span>
         </button>

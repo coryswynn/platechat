@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GetStaticProps, GetStaticPaths } from 'next';
 import Header from '../../components/Header';
-import { useLocalDb, Comment, getCommentsByUser } from '../../lib/localDb'; // Ensure getCommentsByUser is imported
+import { useLocalDb, Comment, getCommentsByUser } from '../../lib/localDb';
 import Link from 'next/link';
 import { useAuth } from '../../lib/useAuth';
+import { Timestamp } from 'firebase/firestore'; // Import Timestamp for Firestore handling
 
 interface UserCommentsPageProps {
   initialComments: Comment[];
@@ -11,16 +12,23 @@ interface UserCommentsPageProps {
 }
 
 export default function UserCommentsPage({ initialComments, userId }: UserCommentsPageProps) {
-  const { upvoteComment, downvoteComment, upvotedCommentsByUser } = useLocalDb();
+  const { upvoteComment, downvoteComment } = useLocalDb();
   const { user } = useAuth();
   const currentUserId = user ? user.id : '';
   const [comments, setComments] = useState<Comment[]>(initialComments);
 
-  // Get upvoted comment IDs from global state for the current user
-  const upvotedCommentIds = upvotedCommentsByUser[currentUserId] || [];
+  useEffect(() => {
+    const fetchComments = async () => {
+      const updatedComments = await getCommentsByUser(userId);
+      setComments(updatedComments);
+    };
+    
+    fetchComments();
+  }, [userId]);
 
   const handleVoteToggle = async (commentId: string) => {
-    const hasUpvoted = upvotedCommentIds.includes(commentId);
+    const comment = comments.find(c => c.id === commentId);
+    const hasUpvoted = comment ? comment.upvotedBy.includes(currentUserId) : false;
 
     if (hasUpvoted) {
       await downvoteComment(commentId, currentUserId);
@@ -43,7 +51,14 @@ export default function UserCommentsPage({ initialComments, userId }: UserCommen
         </div>
         <div className="space-y-4">
           {comments.map((comment) => {
-            const hasUpvoted = upvotedCommentIds.includes(comment.id);
+            // Check if the current user has upvoted this comment
+            const hasUpvoted = comment.upvotedBy.includes(currentUserId);
+
+            // Properly handle `createdAt` conversion
+            const createdAt =
+              comment.createdAt instanceof Timestamp
+                ? comment.createdAt.toDate() // Convert Firestore Timestamp to Date
+                : new Date(comment.createdAt); // Convert string to Date object if serialized
 
             return (
               <div key={comment.id} className="bg-gray-800 rounded-lg p-4 flex space-x-4">
@@ -74,7 +89,9 @@ export default function UserCommentsPage({ initialComments, userId }: UserCommen
                     License Plate: {comment.plateNumber}
                   </Link>
                   <p className="text-white mt-2">{comment.content}</p>
-                  <p className="text-gray-400 text-sm mt-1">Posted on: {new Date(comment.createdAt).toLocaleDateString()}</p>
+                  <p className="text-gray-400 text-sm mt-1">
+                    Posted on: {createdAt && !isNaN(createdAt.getTime()) ? createdAt.toLocaleDateString() : 'Unknown Date'}
+                  </p>
                 </div>
               </div>
             );
