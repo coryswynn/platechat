@@ -4,16 +4,16 @@ import { useState } from 'react';
 import { Button } from "../components/button";
 import { Input } from "../components/input";
 import { Label } from "../components/label";
-import Link from 'next/link'; // Ensure Link is imported
 import { Checkbox } from "../components/checkbox";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/card";
 import { CheckCircle2 } from 'lucide-react';
-import { useRouter } from 'next/router'; // Import useRouter from Next.js
-
+import { useRouter } from 'next/router'; 
+import { auth } from '../lib/firebaseConfig'; // Import Firebase Auth
+import { updateProfile } from 'firebase/auth'; // Import updateProfile function
 
 export default function SignUpFlow() {
   const [step, setStep] = useState(1);
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter(); 
   const [formData, setFormData] = useState({
     username: '',
     agreeToTerms: false
@@ -35,10 +35,23 @@ export default function SignUpFlow() {
     setStep((prev) => prev - 1);
   };
 
-  const handleStart = () => {
-    router.push('/'); // Route to home page
-  };
+  // Final step: update the display name with the selected username and redirect
+  const handleCompleteSignUp = async () => {
+    if (auth.currentUser) {
+      try {
+        // Update the user's profile with the entered username
+        await updateProfile(auth.currentUser, {
+          displayName: formData.username
+        });
+        console.log("Username updated:", formData.username);
 
+        // Redirect to home page after completing sign-up
+        router.push('/');
+      } catch (error) {
+        console.error('Error updating profile:', error);
+      }
+    }
+  };
 
   const renderStep = () => {
     switch (step) {
@@ -50,8 +63,8 @@ export default function SignUpFlow() {
               <CardDescription className="text-gray-400">Anonymously chat about license plates you see on the road.</CardDescription>
             </CardHeader>
             <CardContent>
-            <div className="text-sm text-gray-500 mb-4">
-              <p>With PlateChat, you can:</p>
+              <div className="text-sm text-gray-500 mb-4">
+                <p>With PlateChat, you can:</p>
                 <ul className="list-disc list-inside mt-2 text-gray-400">
                   <li>Leave anonymous comments about license plates</li>
                   <li>View and respond to comments left by others</li>
@@ -117,7 +130,7 @@ export default function SignUpFlow() {
             </CardContent>
             <CardFooter className="flex justify-between">
               <Button variant="outline" onClick={handleBack} className="text-white border border-gray-500">Back</Button>
-              <Button onClick={handleNext} disabled={!formData.agreeToTerms} className="bg-blue-500 text-white">Complete Sign Up</Button>
+              <Button onClick={handleNext} disabled={!formData.agreeToTerms} className="bg-blue-500 text-white">Complete</Button>
             </CardFooter>
           </>
         );
@@ -133,7 +146,7 @@ export default function SignUpFlow() {
               <p className="text-center text-gray-400">Welcome aboard, {formData.username}! You can now start chatting about license plates anonymously.</p>
             </CardContent>
             <CardFooter>
-              <Button onClick={handleStart} className="flex items-center justify-center w-full bg-blue-500 text-white">
+              <Button onClick={handleCompleteSignUp} className="flex items-center justify-center w-full bg-blue-500 text-white">
                 Start Using PlateChat
               </Button>
             </CardFooter>

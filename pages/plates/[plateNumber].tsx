@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { GetStaticProps, GetStaticPaths } from 'next';
 import { useRouter } from 'next/router';
+import React, { useEffect, useState } from 'react';
 import Header from '../../components/Header';
 import CommentForm from '../../components/CommentForm';
 import CommentList from '../../components/CommentList';
@@ -8,13 +9,11 @@ import { useAuth } from '../../lib/useAuth';
 import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
 import { Button } from '../../components/button';
 
-export default function PlatePage() {
-  const router = useRouter();
-  const { plateNumber } = router.query;
+export default function PlatePage({ plateNumber }: { plateNumber: string }) {
   const { getCommentsByPlate, getPlateVote, updatePlateVote, upvotedCommentsByUser } = useLocalDb();
   const [comments, setComments] = useState<Comment[]>([]);
   const { user } = useAuth();
-  const [overallSentiment, setOverallSentiment] = useState<'positive' | 'negative' | 'neutral'>('neutral');
+  const [overallSentiment, setOverallSentiment] = useState<'good driver' | 'all good' | 'watch out'>('all good');
 
   // Voting states
   const [upvotes, setUpvotes] = useState(0);
@@ -23,17 +22,17 @@ export default function PlatePage() {
 
   const calculateOverallSentiment = (upvotes: number, downvotes: number) => {
     if (upvotes > downvotes) {
-      return 'positive';
+      return 'good driver';
     } else if (downvotes > upvotes) {
-      return 'negative';
+      return 'watch out';
     } else {
-      return 'neutral';
+      return 'all good';
     }
   };
 
   useEffect(() => {
     const fetchData = async () => {
-      if (plateNumber && typeof plateNumber === 'string' && user?.id) {
+      if (plateNumber && user?.id) {
         try {
           // Fetch comments related to the license plate
           const plateComments = await getCommentsByPlate(plateNumber);
@@ -98,9 +97,9 @@ export default function PlatePage() {
               License Plate: {plateNumber}
             </h1>
             <div className="flex items-center justify-center p-4 mb-4">
-              <div className={`rounded-full px-4 py-2 text-white ${overallSentiment === 'positive' ? 'bg-green-500' : overallSentiment === 'negative' ? 'bg-red-500' : 'bg-gray-500'}`}>
-                {overallSentiment === 'positive' ? '👍' : overallSentiment === 'negative' ? '👎' : '😐'} 
-                {overallSentiment === 'positive' ? 'Great driver!' : overallSentiment === 'negative' ? 'Watch out!' : 'Neutral'}
+              <div className={`rounded-full px-4 py-2 text-white ${overallSentiment === 'good driver' ? 'bg-green-500' : overallSentiment === 'watch out' ? 'bg-red-500' : 'bg-gray-500'}`}>
+                {overallSentiment === 'good driver' ? '👍' : overallSentiment === 'watch out' ? '👎' : '😐'} 
+                {overallSentiment === 'good driver' ? 'Good Driver' : overallSentiment === 'watch out' ? 'Watch Out!' : 'All Good'}
               </div>
             </div>
 
@@ -150,3 +149,27 @@ export default function PlatePage() {
     </div>
   );
 }
+
+// Generate paths at build time for all possible plate numbers
+export const getStaticPaths: GetStaticPaths = async () => {
+  // Explicitly define the type of `paths` as an array of objects with `params` containing `plateNumber`
+  const paths: { params: { plateNumber: string } }[] = []; // You can fetch actual plate numbers from an API or DB
+
+  return {
+    paths,
+    fallback: 'blocking', // You can use 'blocking' to wait for the content to be generated
+  };
+};
+
+// Fetch plate-specific data during build
+export const getStaticProps: GetStaticProps = async ({ params }) => {
+  const plateNumber = params?.plateNumber as string;
+
+  // Pass the plateNumber as a prop to the component
+  return {
+    props: {
+      plateNumber,
+    },
+    revalidate: 10, // Revalidate the data every 10 seconds
+  };
+};

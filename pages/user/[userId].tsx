@@ -1,41 +1,36 @@
-import React, { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
-import { useLocalDb, Comment } from '../../lib/localDb';
+import React, { useState } from 'react';
+import { GetStaticProps, GetStaticPaths } from 'next';
 import Header from '../../components/Header';
+import { useLocalDb, Comment, getCommentsByUser } from '../../lib/localDb'; // Ensure getCommentsByUser is imported
 import Link from 'next/link';
 import { useAuth } from '../../lib/useAuth';
 
-export default function UserCommentsPage() {
-  const router = useRouter();
-  const { userId } = router.query;
-  const { getCommentsByUser, upvoteComment, downvoteComment, upvotedCommentsByUser } = useLocalDb();
-  const { user } = useAuth(); // Get the current user from authentication context
-  const currentUserId = user ? user.id : ''; // Use the real user ID if logged in, otherwise empty
-  const [comments, setComments] = useState<Comment[]>([]);
+interface UserCommentsPageProps {
+  initialComments: Comment[];
+  userId: string;
+}
 
-  // Fetch user-specific comments
-  useEffect(() => {
-    const fetchComments = async () => {
-      if (userId && typeof userId === 'string') {
-        const userComments = await getCommentsByUser(userId); // Await the promise here
-        setComments(userComments); // Set the resolved value
-      }
-    };
-
-    fetchComments();
-  }, [userId, getCommentsByUser]);
+export default function UserCommentsPage({ initialComments, userId }: UserCommentsPageProps) {
+  const { upvoteComment, downvoteComment, upvotedCommentsByUser } = useLocalDb();
+  const { user } = useAuth();
+  const currentUserId = user ? user.id : '';
+  const [comments, setComments] = useState<Comment[]>(initialComments);
 
   // Get upvoted comment IDs from global state for the current user
   const upvotedCommentIds = upvotedCommentsByUser[currentUserId] || [];
 
-  const handleVoteToggle = (commentId: string) => {
+  const handleVoteToggle = async (commentId: string) => {
     const hasUpvoted = upvotedCommentIds.includes(commentId);
 
     if (hasUpvoted) {
-      downvoteComment(commentId, currentUserId);
+      await downvoteComment(commentId, currentUserId);
     } else {
-      upvoteComment(commentId, currentUserId);
+      await upvoteComment(commentId, currentUserId);
     }
+
+    // Refetch comments to reflect updated vote counts
+    const updatedComments = await getCommentsByUser(userId);
+    setComments(updatedComments);
   };
 
   return (
@@ -47,7 +42,7 @@ export default function UserCommentsPage() {
           <span className="text-gray-400 text-lg">{comments.length} comments</span>
         </div>
         <div className="space-y-4">
-          {comments.map(comment => {
+          {comments.map((comment) => {
             const hasUpvoted = upvotedCommentIds.includes(comment.id);
 
             return (
@@ -56,7 +51,9 @@ export default function UserCommentsPage() {
                 <div className="flex flex-col items-center justify-start">
                   <button
                     onClick={() => handleVoteToggle(comment.id)}
-                    className={`flex flex-col items-center hover:text-yellow-400 ${hasUpvoted ? 'text-yellow-400' : 'text-blue-400'}`}
+                    className={`flex flex-col items-center hover:text-yellow-400 ${
+                      hasUpvoted ? 'text-yellow-400' : 'text-blue-400'
+                    }`}
                   >
                     <svg
                       className={`w-6 h-6 ${hasUpvoted ? 'text-yellow-400' : ''}`}
@@ -87,3 +84,34 @@ export default function UserCommentsPage() {
     </div>
   );
 }
+
+// Define static paths for users at build time
+export const getStaticPaths: GetStaticPaths = async () => {
+  const paths: { params: { userId: string } }[] = [];
+
+  return {
+    paths,
+    fallback: 'blocking',
+  };
+};
+
+// Fetch user-specific comments during build
+export const getStaticProps: GetStaticProps = async (context) => {
+  const { userId } = context.params!;
+
+  const comments = await getCommentsByUser(userId as string);
+
+  // Convert `createdAt` field to string for JSON serialization
+  const initialComments = comments.map((comment: Comment) => ({
+    ...comment,
+    createdAt: comment.createdAt.toString(),
+  }));
+
+  return {
+    props: {
+      initialComments,
+      userId,
+    },
+    revalidate: 10, // Revalidate the data every 10 seconds
+  };
+};

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { db } from '../lib/firebaseConfig'; // Import Firebase Firestore config
+import { db } from '../lib/firebaseConfig';
 import {
   collection,
   addDoc,
@@ -12,8 +12,10 @@ import {
   getDocs,
   onSnapshot,
   setDoc,
-} from 'firebase/firestore'; // Import Firestore functions
+  Timestamp,
+} from 'firebase/firestore';
 
+// Interfaces
 export interface Comment {
   id: string;
   plateNumber: string;
@@ -49,29 +51,36 @@ interface LocalDbContextType {
   updatePlateVote: (plateNumber: string, userId: string, type: 'upvote' | 'downvote') => Promise<void>;
 }
 
+// Create context
 const LocalDbContext = createContext<LocalDbContextType | undefined>(undefined);
 
+// Provider component
 export function LocalDbProvider({ children }: { children: React.ReactNode }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [upvotedCommentsByUser, setUpvotedCommentsByUser] = useState<{ [userId: string]: string[] }>({});
 
-  // Fetching comments in real-time from Firebase Firestore
+  // Fetch comments in real-time
   useEffect(() => {
     const q = query(collection(db, 'comments'));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedComments: Comment[] = [];
       querySnapshot.forEach((doc) => {
-        fetchedComments.push({ id: doc.id, ...doc.data() } as Comment);
+        const data = doc.data();
+        fetchedComments.push({
+          ...data,
+          id: doc.id,
+          createdAt: data.createdAt.toDate(),
+        } as Comment);
       });
       setComments(fetchedComments);
     });
-    return () => unsubscribe(); // Clean up the snapshot listener
+    return () => unsubscribe();
   }, []);
 
   const addComment = async (comment: Omit<Comment, 'id' | 'createdAt'>) => {
     const newComment = {
       ...comment,
-      createdAt: new Date(),
+      createdAt: Timestamp.now(),
       upvotes: 0,
       upvotedBy: [],
     };
@@ -93,7 +102,12 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
     const querySnapshot = await getDocs(q);
     const plateComments: Comment[] = [];
     querySnapshot.forEach((doc) => {
-      plateComments.push({ id: doc.id, ...doc.data() } as Comment);
+      const data = doc.data();
+      plateComments.push({
+        ...data,
+        id: doc.id,
+        createdAt: data.createdAt.toDate(),
+      } as Comment);
     });
     return plateComments;
   };
@@ -103,9 +117,21 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
     const commentSnap = await getDoc(commentRef);
     if (commentSnap.exists()) {
       const commentData = commentSnap.data() as Comment;
-      const updatedUpvotes = commentData.upvotes + 1;
-      const updatedUpvotedBy = Array.from(new Set([...commentData.upvotedBy, userId]));
-      await updateDoc(commentRef, { upvotes: updatedUpvotes, upvotedBy: updatedUpvotedBy });
+      const isAlreadyUpvoted = commentData.upvotedBy.includes(userId);
+
+      // If the user has already upvoted, remove the upvote (toggle behavior)
+      const updatedUpvotes = isAlreadyUpvoted
+        ? Math.max(0, commentData.upvotes - 1)
+        : commentData.upvotes + 1;
+      const updatedUpvotedBy = isAlreadyUpvoted
+        ? commentData.upvotedBy.filter((uid) => uid !== userId)
+        : [...commentData.upvotedBy, userId];
+
+      // Update Firestore and make sure the upvote/downvote is logged
+      await updateDoc(commentRef, {
+        upvotes: updatedUpvotes,
+        upvotedBy: updatedUpvotedBy,
+      });
     }
   };
 
@@ -114,10 +140,38 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
     const commentSnap = await getDoc(commentRef);
     if (commentSnap.exists()) {
       const commentData = commentSnap.data() as Comment;
-      const updatedUpvotes = Math.max(0, commentData.upvotes - 1);
-      const updatedUpvotedBy = commentData.upvotedBy.filter((upvoter) => upvoter !== userId);
-      await updateDoc(commentRef, { upvotes: updatedUpvotes, upvotedBy: updatedUpvotedBy });
+      const isAlreadyUpvoted = commentData.upvotedBy.includes(userId);
+
+      // If the user has already upvoted, remove the upvote (toggle behavior)
+      const updatedUpvotes = isAlreadyUpvoted
+        ? Math.max(0, commentData.upvotes - 1)
+        : commentData.upvotes + 1;
+      const updatedUpvotedBy = isAlreadyUpvoted
+        ? commentData.upvotedBy.filter((uid) => uid !== userId)
+        : [...commentData.upvotedBy, userId];
+
+      // Update Firestore and make sure the downvote/upvote is logged
+      await updateDoc(commentRef, {
+        upvotes: updatedUpvotes,
+        upvotedBy: updatedUpvotedBy,
+      });
     }
+  };
+
+
+  const getCommentsByUser = async (userId: string): Promise<Comment[]> => {
+    const q = query(collection(db, 'comments'), where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+    const userComments: Comment[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      userComments.push({
+        ...data,
+        id: doc.id,
+        createdAt: data.createdAt.toDate(),
+      } as Comment);
+    });
+    return userComments;
   };
 
   const getPlateVote = async (plateNumber: string, userId?: string) => {
@@ -139,16 +193,13 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
   
     let currentVotes: PlateVote = { upvotes: 0, downvotes: 0, users: {} };
   
-    // If the document exists, get the current data; otherwise, create a new document
     if (plateVoteSnap.exists()) {
       currentVotes = plateVoteSnap.data() as PlateVote;
     }
   
     const currentUserVote = currentVotes.users[userId];
   
-    // Logic to adjust the votes based on the user's previous vote
     if (currentUserVote === type) {
-      // Undo vote
       if (type === 'upvote') currentVotes.upvotes = Math.max(0, currentVotes.upvotes - 1);
       else currentVotes.downvotes = Math.max(0, currentVotes.downvotes - 1);
       delete currentVotes.users[userId];
@@ -160,18 +211,16 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
       currentVotes.users[userId] = type;
     }
   
-    // Converting the `PlateVote` object into a plain object that Firebase can handle
     const plateVoteUpdateData = {
       upvotes: currentVotes.upvotes,
       downvotes: currentVotes.downvotes,
       users: { ...currentVotes.users },
     };
   
-    // If the document doesn't exist, create it. Otherwise, update the existing document.
     if (!plateVoteSnap.exists()) {
-      await setDoc(plateVoteRef, plateVoteUpdateData); // Create the document if it doesn't exist
+      await setDoc(plateVoteRef, plateVoteUpdateData);
     } else {
-      await updateDoc(plateVoteRef, plateVoteUpdateData); // Update the existing document
+      await updateDoc(plateVoteRef, plateVoteUpdateData);
     }
   };
 
@@ -185,7 +234,7 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
         getCommentsByPlate,
         upvoteComment,
         downvoteComment,
-        getCommentsByUser: async (userId: string) => comments.filter((c) => c.userId === userId),
+        getCommentsByUser,
         upvotedCommentsByUser,
         getPlateVote,
         updatePlateVote,
@@ -196,6 +245,7 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Hook for using the LocalDb context
 export function useLocalDb() {
   const context = useContext(LocalDbContext);
   if (context === undefined) {
@@ -203,3 +253,63 @@ export function useLocalDb() {
   }
   return context;
 }
+
+// Server-side functions
+export async function serverGetCommentsByUser(userId: string): Promise<Comment[]> {
+  const q = query(collection(db, 'comments'), where('userId', '==', userId));
+  const querySnapshot = await getDocs(q);
+  const userComments: Comment[] = [];
+  querySnapshot.forEach((doc) => {
+    const data = doc.data();
+    userComments.push({
+      ...data,
+      id: doc.id,
+      createdAt: data.createdAt.toDate(),
+    } as Comment);
+  });
+  return userComments;
+}
+
+export async function serverGetCommentsByPlate(plateNumber: string): Promise<Comment[]> {
+  const q = query(collection(db, 'comments'), where('plateNumber', '==', plateNumber));
+  const querySnapshot = await getDocs(q);
+  const plateComments: Comment[] = [];
+  querySnapshot.forEach((doc) => {
+    const data = doc.data();
+    plateComments.push({
+      ...data,
+      id: doc.id,
+      createdAt: data.createdAt.toDate(),
+    } as Comment);
+  });
+  return plateComments;
+}
+
+export async function serverAddComment(comment: Omit<Comment, 'id' | 'createdAt'>): Promise<void> {
+  const newComment = {
+    ...comment,
+    createdAt: Timestamp.now(),
+    upvotes: 0,
+    upvotedBy: [],
+  };
+  await addDoc(collection(db, 'comments'), newComment);
+}
+
+// Export all server-side functions
+export const serverDb = {
+  getCommentsByUser: serverGetCommentsByUser,
+  getCommentsByPlate: serverGetCommentsByPlate,
+  addComment: serverAddComment,
+};
+
+export const getCommentsByUser = async (userId: string) => {
+  const q = query(collection(db, 'comments'), where('userId', '==', userId));
+  const querySnapshot = await getDocs(q);
+  
+  const userComments: Comment[] = [];
+  querySnapshot.forEach((doc) => {
+    userComments.push({ id: doc.id, ...doc.data() } as Comment);
+  });
+  
+  return userComments;
+};

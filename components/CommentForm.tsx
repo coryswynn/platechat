@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLocalDb, Comment } from '../lib/localDb';
+import { auth } from '../lib/firebaseConfig'; // Import Firebase Auth to get current user info
 
 interface CommentFormProps {
   plateNumber: string;
@@ -19,9 +20,13 @@ export default function CommentForm({ plateNumber, parentId, onSubmit, currentUs
     if (comment.trim() && !isSubmitting) {
       setIsSubmitting(true);
 
-      // Determine whether the comment should be anonymous
+      // Get user displayName from Firebase Auth if not posting anonymously
+      const currentUser = auth.currentUser;
       const userId = isAnonymous ? 'anonymous' : currentUserId;
-      const userName = isAnonymous ? 'Anonymous' : 'User'; // Replace 'User' with actual user name
+      const userName = isAnonymous ? 'Anonymous' : currentUser?.displayName || 'User'; // Get user's displayName or fall back to 'User'
+
+      // Add createdAt field with the current timestamp as a Date object
+      const createdAt = new Date(); // Ensure createdAt is a Date object
 
       await addComment({
         plateNumber,
@@ -32,6 +37,7 @@ export default function CommentForm({ plateNumber, parentId, onSubmit, currentUs
         upvotes: 0,
         upvotedBy: [],
       });
+
       setComment('');
       setIsSubmitting(false);
       if (onSubmit) {
