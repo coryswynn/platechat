@@ -22,20 +22,10 @@ export default function PlatePage() {
   const [downvotes, setDownvotes] = useState(0);
   const [userVote, setUserVote] = useState<'upvote' | 'downvote' | null>(null); // Track user vote
 
-  const calculateOverallSentiment = (comments: Comment[]) => {
-    const sentimentCounts = comments.reduce((acc, comment) => {
-      if (comment.sentiment) {
-        acc[comment.sentiment] = (acc[comment.sentiment] || 0) + 1;
-      }
-      return acc;
-    }, {} as Record<string, number>);
-
-    const positiveCount = sentimentCounts.positive || 0;
-    const negativeCount = sentimentCounts.negative || 0;
-
-    if (positiveCount > negativeCount) {
+  const calculateOverallSentiment = (upvotes: number, downvotes: number) => {
+    if (upvotes > downvotes) {
       return 'positive';
-    } else if (negativeCount > positiveCount) {
+    } else if (downvotes > upvotes) {
       return 'negative';
     } else {
       return 'neutral';
@@ -46,20 +36,22 @@ export default function PlatePage() {
     if (plateNumber && typeof plateNumber === 'string' && user?.id) {
       const plateComments = getCommentsByPlate(plateNumber);
       setComments(plateComments);
-      const newSentiment = calculateOverallSentiment(plateComments);
-      setOverallSentiment(newSentiment);
 
       // Get initial vote counts and user vote
       const { upvotes, downvotes, userVote } = getPlateVote(plateNumber, user.id);
       setUpvotes(upvotes);
       setDownvotes(downvotes);
       setUserVote(userVote);
+
+      // Calculate overall sentiment based on votes
+      const newSentiment = calculateOverallSentiment(upvotes, downvotes);
+      setOverallSentiment(newSentiment);
     }
   }, [plateNumber, getCommentsByPlate, allComments, user?.id]);
 
   const handleUpvote = () => {
     if (!user?.id) return; // User must be logged in
-  
+
     const newVote = userVote === 'upvote' ? null : 'upvote'; // Toggle vote
     updatePlateVote(plateNumber as string, user.id, 'upvote');
     setUserVote(newVote); // Update user vote state
@@ -67,11 +59,15 @@ export default function PlatePage() {
     if (userVote === 'downvote') {
       setDownvotes(downvotes - 1); // Undo downvote if switching vote
     }
+
+    // Recalculate overall sentiment based on new votes
+    const newSentiment = calculateOverallSentiment(upvotes + (newVote === 'upvote' ? 1 : -1), downvotes - (userVote === 'downvote' ? 1 : 0));
+    setOverallSentiment(newSentiment);
   };
-  
+
   const handleDownvote = () => {
     if (!user?.id) return; // User must be logged in
-  
+
     const newVote = userVote === 'downvote' ? null : 'downvote'; // Toggle vote
     updatePlateVote(plateNumber as string, user.id, 'downvote');
     setUserVote(newVote); // Update user vote state
@@ -79,6 +75,10 @@ export default function PlatePage() {
     if (userVote === 'upvote') {
       setUpvotes(upvotes - 1); // Undo upvote if switching vote
     }
+
+    // Recalculate overall sentiment based on new votes
+    const newSentiment = calculateOverallSentiment(upvotes - (userVote === 'upvote' ? 1 : 0), downvotes + (newVote === 'downvote' ? 1 : -1));
+    setOverallSentiment(newSentiment);
   };
 
   return (
