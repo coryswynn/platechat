@@ -1,4 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { db } from '../lib/firebaseConfig'; // Import Firebase Firestore config
+import {
+  collection,
+  addDoc,
+  doc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  getDoc,
+  getDocs,
+  onSnapshot,
+  setDoc,
+} from 'firebase/firestore'; // Import Firestore functions
 
 export interface Comment {
   id: string;
@@ -23,171 +37,142 @@ interface PlateVote {
 
 interface LocalDbContextType {
   comments: Comment[];
-  addComment: (comment: Omit<Comment, 'id' | 'createdAt'>) => void;
-  updateComment: (id: string, content: string) => void;
-  deleteComment: (id: string) => void;
-  getCommentsByPlate: (plateNumber: string) => Comment[];
-  upvoteComment: (id: string, userId: string) => void;
-  downvoteComment: (id: string, userId: string) => void;
-  getCommentsByUser: (userId: string) => Comment[];
+  addComment: (comment: Omit<Comment, 'id' | 'createdAt'>) => Promise<void>;
+  updateComment: (id: string, content: string) => Promise<void>;
+  deleteComment: (id: string) => Promise<void>;
+  getCommentsByPlate: (plateNumber: string) => Promise<Comment[]>;
+  upvoteComment: (id: string, userId: string) => Promise<void>;
+  downvoteComment: (id: string, userId: string) => Promise<void>;
+  getCommentsByUser: (userId: string) => Promise<Comment[]>;
   upvotedCommentsByUser: { [userId: string]: string[] };
-  getPlateVote: (plateNumber: string, userId: string) => { upvotes: number; downvotes: number; userVote: 'upvote' | 'downvote' | null };
-  updatePlateVote: (plateNumber: string, userId: string, type: 'upvote' | 'downvote') => void;
+  getPlateVote: (plateNumber: string, userId: string) => Promise<PlateVote>;
+  updatePlateVote: (plateNumber: string, userId: string, type: 'upvote' | 'downvote') => Promise<void>;
 }
-
-// Function to get the upvotes/downvotes for a specific plate number and track user vote
-export const getPlateVote = (plateNumber: string, userId?: string) => {
-  const savedPlateVotes = localStorage.getItem('plateVotes');
-  const plateVotes = savedPlateVotes ? JSON.parse(savedPlateVotes) : {};
-  const plateVote: PlateVote = plateVotes[plateNumber] || { upvotes: 0, downvotes: 0, users: {} };
-  
-  // Ensure userId is provided before trying to access userVote
-  const userVote = userId ? plateVote.users[userId] || null : null;
-  
-  return {
-    upvotes: plateVote.upvotes,
-    downvotes: plateVote.downvotes,
-    userVote,
-  };
-};
-
-// Function to update the upvotes/downvotes and track user vote
-export const updatePlateVote = (plateNumber: string, userId: string, type: 'upvote' | 'downvote') => {
-  // Ensure that userId is defined
-  if (!userId) {
-    console.error('Error: userId is undefined');
-    return;
-  }
-
-  const savedPlateVotes = localStorage.getItem('plateVotes');
-  const plateVotes = savedPlateVotes ? JSON.parse(savedPlateVotes) : {};
-
-  // Initialize currentVotes for the plate if it doesn't exist
-  const currentVotes: PlateVote = plateVotes[plateNumber] || { upvotes: 0, downvotes: 0, users: {} };
-  
-  // Ensure users is an object (initialize if not present)
-  currentVotes.users = currentVotes.users || {};
-
-  const currentUserVote = currentVotes.users[userId]; // Get user's current vote
-
-  if (currentUserVote === type) {
-    // If the user is undoing their vote (voting the same type again), remove their vote
-    if (type === 'upvote') {
-      currentVotes.upvotes = Math.max(0, currentVotes.upvotes - 1);
-    } else if (type === 'downvote') {
-      currentVotes.downvotes = Math.max(0, currentVotes.downvotes - 1);
-    }
-    delete currentVotes.users[userId]; // Remove user's vote record
-  } else {
-    // If the user is switching votes or voting for the first time
-    if (currentUserVote === 'upvote') {
-      currentVotes.upvotes = Math.max(0, currentVotes.upvotes - 1); // Undo the previous upvote
-    } else if (currentUserVote === 'downvote') {
-      currentVotes.downvotes = Math.max(0, currentVotes.downvotes - 1); // Undo the previous downvote
-    }
-
-    // Apply the new vote
-    if (type === 'upvote') {
-      currentVotes.upvotes += 1;
-    } else if (type === 'downvote') {
-      currentVotes.downvotes += 1;
-    }
-
-    currentVotes.users[userId] = type; // Store the user's vote type
-  }
-
-  plateVotes[plateNumber] = currentVotes;
-  localStorage.setItem('plateVotes', JSON.stringify(plateVotes)); // Save updated votes to localStorage
-};
 
 const LocalDbContext = createContext<LocalDbContextType | undefined>(undefined);
 
 export function LocalDbProvider({ children }: { children: React.ReactNode }) {
   const [comments, setComments] = useState<Comment[]>([]);
   const [upvotedCommentsByUser, setUpvotedCommentsByUser] = useState<{ [userId: string]: string[] }>({});
-  
+
+  // Fetching comments in real-time from Firebase Firestore
   useEffect(() => {
-    const savedComments = localStorage.getItem('comments');
-    const savedUpvotes = localStorage.getItem('upvotedCommentsByUser');
-    
-    if (savedComments) {
-      setComments(JSON.parse(savedComments));
-    }
-    if (savedUpvotes) {
-      setUpvotedCommentsByUser(JSON.parse(savedUpvotes));
-    }
+    const q = query(collection(db, 'comments'));
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
+      const fetchedComments: Comment[] = [];
+      querySnapshot.forEach((doc) => {
+        fetchedComments.push({ id: doc.id, ...doc.data() } as Comment);
+      });
+      setComments(fetchedComments);
+    });
+    return () => unsubscribe(); // Clean up the snapshot listener
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem('comments', JSON.stringify(comments));
-    localStorage.setItem('upvotedCommentsByUser', JSON.stringify(upvotedCommentsByUser));
-  }, [comments, upvotedCommentsByUser]);
-
-  const addComment = async (comment: Omit<Comment, 'id' | 'createdAt' | 'sentiment'>) => {
-    const newComment: Comment = {
+  const addComment = async (comment: Omit<Comment, 'id' | 'createdAt'>) => {
+    const newComment = {
       ...comment,
-      id: Date.now().toString(),
       createdAt: new Date(),
       upvotes: 0,
       upvotedBy: [],
     };
-    setComments(prevComments => [...prevComments, newComment]);
+    await addDoc(collection(db, 'comments'), newComment);
   };
 
   const updateComment = async (id: string, content: string) => {
-    setComments(prevComments =>
-      prevComments.map(comment =>
-        comment.id === id ? { ...comment, content } : comment
-      )
-    );
+    const commentRef = doc(db, 'comments', id);
+    await updateDoc(commentRef, { content });
   };
 
-  const deleteComment = (id: string) => {
-    setComments(prevComments => prevComments.filter(comment => comment.id !== id));
+  const deleteComment = async (id: string) => {
+    const commentRef = doc(db, 'comments', id);
+    await deleteDoc(commentRef);
   };
 
-  const getCommentsByPlate = (plateNumber: string) => {
-    return comments.filter(comment => comment.plateNumber === plateNumber);
+  const getCommentsByPlate = async (plateNumber: string) => {
+    const q = query(collection(db, 'comments'), where('plateNumber', '==', plateNumber));
+    const querySnapshot = await getDocs(q);
+    const plateComments: Comment[] = [];
+    querySnapshot.forEach((doc) => {
+      plateComments.push({ id: doc.id, ...doc.data() } as Comment);
+    });
+    return plateComments;
   };
 
-  const getCommentsByUser = (userId: string) => {
-    return comments.filter(comment => comment.userId === userId);
+  const upvoteComment = async (id: string, userId: string) => {
+    const commentRef = doc(db, 'comments', id);
+    const commentSnap = await getDoc(commentRef);
+    if (commentSnap.exists()) {
+      const commentData = commentSnap.data() as Comment;
+      const updatedUpvotes = commentData.upvotes + 1;
+      const updatedUpvotedBy = Array.from(new Set([...commentData.upvotedBy, userId]));
+      await updateDoc(commentRef, { upvotes: updatedUpvotes, upvotedBy: updatedUpvotedBy });
+    }
   };
 
-  const upvoteComment = (id: string, userId: string) => {
-    setComments(prevComments =>
-      prevComments.map(comment =>
-        comment.id === id
-          ? {
-              ...comment,
-              upvotes: comment.upvotes + 1,
-              upvotedBy: Array.from(new Set([...(comment.upvotedBy || []), userId])),
-            }
-          : comment
-      )
-    );
-    setUpvotedCommentsByUser(prev => ({
-      ...prev,
-      [userId]: Array.from(new Set([...(prev[userId] || []), id])),
-    }));
+  const downvoteComment = async (id: string, userId: string) => {
+    const commentRef = doc(db, 'comments', id);
+    const commentSnap = await getDoc(commentRef);
+    if (commentSnap.exists()) {
+      const commentData = commentSnap.data() as Comment;
+      const updatedUpvotes = Math.max(0, commentData.upvotes - 1);
+      const updatedUpvotedBy = commentData.upvotedBy.filter((upvoter) => upvoter !== userId);
+      await updateDoc(commentRef, { upvotes: updatedUpvotes, upvotedBy: updatedUpvotedBy });
+    }
   };
 
-  const downvoteComment = (id: string, userId: string) => {
-    setComments(prevComments =>
-      prevComments.map(comment =>
-        comment.id === id
-          ? {
-              ...comment,
-              upvotes: Math.max(0, comment.upvotes - 1),
-              upvotedBy: comment.upvotedBy.filter(upvoter => upvoter !== userId),
-            }
-          : comment
-      )
-    );
-    setUpvotedCommentsByUser(prev => ({
-      ...prev,
-      [userId]: (prev[userId] || []).filter(upvotedId => upvotedId !== id),
-    }));
+  const getPlateVote = async (plateNumber: string, userId?: string) => {
+    const plateVoteRef = doc(db, 'plateVotes', plateNumber);
+    const plateVoteSnap = await getDoc(plateVoteRef);
+
+    if (plateVoteSnap.exists()) {
+      const data = plateVoteSnap.data() as PlateVote;
+      const userVote = userId ? data.users[userId] || null : null;
+      return { ...data, userVote };
+    } else {
+      return { upvotes: 0, downvotes: 0, users: {} };
+    }
+  };
+
+  const updatePlateVote = async (plateNumber: string, userId: string, type: 'upvote' | 'downvote') => {
+    const plateVoteRef = doc(db, 'plateVotes', plateNumber);
+    const plateVoteSnap = await getDoc(plateVoteRef);
+  
+    let currentVotes: PlateVote = { upvotes: 0, downvotes: 0, users: {} };
+  
+    // If the document exists, get the current data; otherwise, create a new document
+    if (plateVoteSnap.exists()) {
+      currentVotes = plateVoteSnap.data() as PlateVote;
+    }
+  
+    const currentUserVote = currentVotes.users[userId];
+  
+    // Logic to adjust the votes based on the user's previous vote
+    if (currentUserVote === type) {
+      // Undo vote
+      if (type === 'upvote') currentVotes.upvotes = Math.max(0, currentVotes.upvotes - 1);
+      else currentVotes.downvotes = Math.max(0, currentVotes.downvotes - 1);
+      delete currentVotes.users[userId];
+    } else {
+      if (currentUserVote === 'upvote') currentVotes.upvotes = Math.max(0, currentVotes.upvotes - 1);
+      if (currentUserVote === 'downvote') currentVotes.downvotes = Math.max(0, currentVotes.downvotes - 1);
+      if (type === 'upvote') currentVotes.upvotes += 1;
+      if (type === 'downvote') currentVotes.downvotes += 1;
+      currentVotes.users[userId] = type;
+    }
+  
+    // Converting the `PlateVote` object into a plain object that Firebase can handle
+    const plateVoteUpdateData = {
+      upvotes: currentVotes.upvotes,
+      downvotes: currentVotes.downvotes,
+      users: { ...currentVotes.users },
+    };
+  
+    // If the document doesn't exist, create it. Otherwise, update the existing document.
+    if (!plateVoteSnap.exists()) {
+      await setDoc(plateVoteRef, plateVoteUpdateData); // Create the document if it doesn't exist
+    } else {
+      await updateDoc(plateVoteRef, plateVoteUpdateData); // Update the existing document
+    }
   };
 
   return (
@@ -200,10 +185,10 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
         getCommentsByPlate,
         upvoteComment,
         downvoteComment,
-        getCommentsByUser,
+        getCommentsByUser: async (userId: string) => comments.filter((c) => c.userId === userId),
         upvotedCommentsByUser,
-        getPlateVote,    // Added to provider
-        updatePlateVote, // Added to provider
+        getPlateVote,
+        updatePlateVote,
       }}
     >
       {children}

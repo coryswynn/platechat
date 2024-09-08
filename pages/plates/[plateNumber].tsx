@@ -5,14 +5,13 @@ import CommentForm from '../../components/CommentForm';
 import CommentList from '../../components/CommentList';
 import { useLocalDb, Comment } from '../../lib/localDb';
 import { useAuth } from '../../lib/useAuth';
-import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa'; // Import react-icons
-import { getPlateVote, updatePlateVote } from '../../lib/localDb'; // Assuming you have localDb handling the voting
-import { Button } from '../../components/button'; // Ensure you have a Button component
+import { FaThumbsUp, FaThumbsDown } from 'react-icons/fa';
+import { Button } from '../../components/button';
 
 export default function PlatePage() {
   const router = useRouter();
   const { plateNumber } = router.query;
-  const { getCommentsByPlate, comments: allComments, upvotedCommentsByUser } = useLocalDb();
+  const { getCommentsByPlate, getPlateVote, updatePlateVote, upvotedCommentsByUser } = useLocalDb();
   const [comments, setComments] = useState<Comment[]>([]);
   const { user } = useAuth();
   const [overallSentiment, setOverallSentiment] = useState<'positive' | 'negative' | 'neutral'>('neutral');
@@ -20,7 +19,7 @@ export default function PlatePage() {
   // Voting states
   const [upvotes, setUpvotes] = useState(0);
   const [downvotes, setDownvotes] = useState(0);
-  const [userVote, setUserVote] = useState<'upvote' | 'downvote' | null>(null); // Track user vote
+  const [userVote, setUserVote] = useState<'upvote' | 'downvote' | null>(null);
 
   const calculateOverallSentiment = (upvotes: number, downvotes: number) => {
     if (upvotes > downvotes) {
@@ -33,50 +32,58 @@ export default function PlatePage() {
   };
 
   useEffect(() => {
-    if (plateNumber && typeof plateNumber === 'string' && user?.id) {
-      const plateComments = getCommentsByPlate(plateNumber);
-      setComments(plateComments);
+    const fetchData = async () => {
+      if (plateNumber && typeof plateNumber === 'string' && user?.id) {
+        try {
+          // Fetch comments related to the license plate
+          const plateComments = await getCommentsByPlate(plateNumber);
+          setComments(plateComments);
 
-      // Get initial vote counts and user vote
-      const { upvotes, downvotes, userVote } = getPlateVote(plateNumber, user.id);
-      setUpvotes(upvotes);
-      setDownvotes(downvotes);
-      setUserVote(userVote);
+          // Fetch plate vote data
+          const plateVote = await getPlateVote(plateNumber as string, user.id);
+          const { upvotes, downvotes, users } = plateVote;
 
-      // Calculate overall sentiment based on votes
-      const newSentiment = calculateOverallSentiment(upvotes, downvotes);
-      setOverallSentiment(newSentiment);
-    }
-  }, [plateNumber, getCommentsByPlate, allComments, user?.id]);
+          // Set user's vote and overall votes
+          setUpvotes(upvotes);
+          setDownvotes(downvotes);
+          setUserVote(users[user.id] || null);
 
-  const handleUpvote = () => {
-    if (!user?.id) return; // User must be logged in
+          // Calculate overall sentiment
+          const sentiment = calculateOverallSentiment(upvotes, downvotes);
+          setOverallSentiment(sentiment);
+        } catch (error) {
+          console.error('Error fetching plate data:', error);
+        }
+      }
+    };
 
-    const newVote = userVote === 'upvote' ? null : 'upvote'; // Toggle vote
-    updatePlateVote(plateNumber as string, user.id, 'upvote');
-    setUserVote(newVote); // Update user vote state
-    setUpvotes(upvotes + (newVote === 'upvote' ? 1 : -1)); // Adjust upvotes
-    if (userVote === 'downvote') {
-      setDownvotes(downvotes - 1); // Undo downvote if switching vote
-    }
+    fetchData();
+  }, [plateNumber, getCommentsByPlate, user?.id]);
 
-    // Recalculate overall sentiment based on new votes
+  const handleUpvote = async () => {
+    if (!user?.id) return;
+
+    const newVote = userVote === 'upvote' ? null : 'upvote';
+    await updatePlateVote(plateNumber as string, user.id, 'upvote');
+    setUserVote(newVote);
+
+    setUpvotes(upvotes + (newVote === 'upvote' ? 1 : -1));
+    if (userVote === 'downvote') setDownvotes(downvotes - 1);
+
     const newSentiment = calculateOverallSentiment(upvotes + (newVote === 'upvote' ? 1 : -1), downvotes - (userVote === 'downvote' ? 1 : 0));
     setOverallSentiment(newSentiment);
   };
 
-  const handleDownvote = () => {
-    if (!user?.id) return; // User must be logged in
+  const handleDownvote = async () => {
+    if (!user?.id) return;
 
-    const newVote = userVote === 'downvote' ? null : 'downvote'; // Toggle vote
-    updatePlateVote(plateNumber as string, user.id, 'downvote');
-    setUserVote(newVote); // Update user vote state
-    setDownvotes(downvotes + (newVote === 'downvote' ? 1 : -1)); // Adjust downvotes
-    if (userVote === 'upvote') {
-      setUpvotes(upvotes - 1); // Undo upvote if switching vote
-    }
+    const newVote = userVote === 'downvote' ? null : 'downvote';
+    await updatePlateVote(plateNumber as string, user.id, 'downvote');
+    setUserVote(newVote);
 
-    // Recalculate overall sentiment based on new votes
+    setDownvotes(downvotes + (newVote === 'downvote' ? 1 : -1));
+    if (userVote === 'upvote') setUpvotes(upvotes - 1);
+
     const newSentiment = calculateOverallSentiment(upvotes - (userVote === 'upvote' ? 1 : 0), downvotes + (newVote === 'downvote' ? 1 : -1));
     setOverallSentiment(newSentiment);
   };
@@ -92,7 +99,8 @@ export default function PlatePage() {
             </h1>
             <div className="flex items-center justify-center p-4 mb-4">
               <div className={`rounded-full px-4 py-2 text-white ${overallSentiment === 'positive' ? 'bg-green-500' : overallSentiment === 'negative' ? 'bg-red-500' : 'bg-gray-500'}`}>
-                {overallSentiment === 'positive' ? '👍' : overallSentiment === 'negative' ? '👎' : '😐'} {overallSentiment === 'positive' ? 'Great driver!' : overallSentiment === 'negative' ? 'Watch out!' : 'Neutral'}
+                {overallSentiment === 'positive' ? '👍' : overallSentiment === 'negative' ? '👎' : '😐'} 
+                {overallSentiment === 'positive' ? 'Great driver!' : overallSentiment === 'negative' ? 'Watch out!' : 'Neutral'}
               </div>
             </div>
 

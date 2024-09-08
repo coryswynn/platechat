@@ -15,10 +15,14 @@ export default function UserCommentsPage() {
 
   // Fetch user-specific comments
   useEffect(() => {
-    if (userId && typeof userId === 'string') {
-      const userComments = getCommentsByUser(userId);
-      setComments(userComments);
-    }
+    const fetchComments = async () => {
+      if (userId && typeof userId === 'string') {
+        const userComments = await getCommentsByUser(userId); // Await the promise here
+        setComments(userComments); // Set the resolved value
+      }
+    };
+
+    fetchComments();
   }, [userId, getCommentsByUser]);
 
   // Get upvoted comment IDs from global state for the current user
