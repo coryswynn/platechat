@@ -77,8 +77,8 @@ export default function Comment({
           className={`flex flex-col items-center ${
             hasUpvoted ? 'text-yellow-400 hover:text-yellow-500' : 'text-blue-400 hover:text-yellow-500'
           }`}
-          disabled={isVoting}
-        >
+          disabled={!currentUserId || isVoting} // Disable if user is not logged in
+          >
           <svg
             className="w-6 h-6"
             fill="none"
@@ -132,12 +132,14 @@ export default function Comment({
               <p className="text-gray-200 mb-4">{comment.content}</p>
             )}
             <div className="flex space-x-4 text-sm">
-              <button
-                onClick={() => setShowReplyForm(!showReplyForm)}
-                className="text-blue-400 hover:text-blue-300"
-              >
-                Reply
-              </button>
+              {currentUserId && (
+                <button
+                  onClick={() => setShowReplyForm(!showReplyForm)}
+                  className="text-blue-400 hover:text-blue-300"
+                >
+                  Reply
+                </button>
+              )}
               {isOwnComment && (
                 <>
                   {isEditing ? (

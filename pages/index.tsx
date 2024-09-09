@@ -17,11 +17,10 @@ interface FeatureProps {
 export default function Home() {
   const [plateNumber, setPlateNumber] = useState('');
   const router = useRouter();
-
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (plateNumber.trim()) {
-      router.push(`/plates/${plateNumber.trim()}`);
+      router.push(`/plates/${plateNumber.trim().toUpperCase()}`);
     }
   };
 

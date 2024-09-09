@@ -69,6 +69,7 @@ export default function UserCommentsPage({ initialComments, userId }: UserCommen
                     className={`flex flex-col items-center hover:text-yellow-400 ${
                       hasUpvoted ? 'text-yellow-400' : 'text-blue-400'
                     }`}
+                    disabled={!currentUserId} // Disable if user is not logged in
                   >
                     <svg
                       className={`w-6 h-6 ${hasUpvoted ? 'text-yellow-400' : ''}`}

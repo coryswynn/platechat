@@ -32,21 +32,25 @@ export default function PlatePage({ plateNumber }: { plateNumber: string }) {
 
   useEffect(() => {
     const fetchData = async () => {
-      if (plateNumber && user?.id) {
+      if (plateNumber) {
         try {
           // Fetch comments related to the license plate
           const plateComments = await getCommentsByPlate(plateNumber);
           setComments(plateComments);
-
+  
           // Fetch plate vote data
-          const plateVote = await getPlateVote(plateNumber as string, user.id);
+          const plateVote = await getPlateVote(plateNumber as string, user?.id || '');
           const { upvotes, downvotes, users } = plateVote;
-
-          // Set user's vote and overall votes
+  
+          // Set overall votes
           setUpvotes(upvotes);
           setDownvotes(downvotes);
-          setUserVote(users[user.id] || null);
-
+  
+          // If user exists, set the user's vote
+          if (user?.id) {
+            setUserVote(users[user.id] || null);
+          }
+  
           // Calculate overall sentiment
           const sentiment = calculateOverallSentiment(upvotes, downvotes);
           setOverallSentiment(sentiment);
@@ -55,7 +59,7 @@ export default function PlatePage({ plateNumber }: { plateNumber: string }) {
         }
       }
     };
-
+  
     fetchData();
   }, [plateNumber, getCommentsByPlate, user?.id]);
 
@@ -98,8 +102,8 @@ export default function PlatePage({ plateNumber }: { plateNumber: string }) {
             </h1>
             <div className="flex items-center justify-center p-4 mb-4">
               <div className={`rounded-full px-4 py-2 text-white ${overallSentiment === 'good driver' ? 'bg-green-500' : overallSentiment === 'watch out' ? 'bg-red-500' : 'bg-gray-500'}`}>
-                {overallSentiment === 'good driver' ? '👍' : overallSentiment === 'watch out' ? '👎' : '😐'} 
-                {overallSentiment === 'good driver' ? 'Good Driver' : overallSentiment === 'watch out' ? 'Watch Out!' : 'All Good'}
+                {overallSentiment === 'good driver' ? '👍 ' : overallSentiment === 'watch out' ? '👎 ' : '😐 '} 
+                {overallSentiment === 'good driver' ? 'Good Driver' : overallSentiment === 'watch out' ? 'Watch Out!' : 'Jury is out'}
               </div>
             </div>
 
