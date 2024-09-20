@@ -13,6 +13,8 @@ import {
   onSnapshot,
   setDoc,
   Timestamp,
+  orderBy,
+  limit 
 } from 'firebase/firestore';
 
 // Interfaces
@@ -43,6 +45,7 @@ interface LocalDbContextType {
   updateComment: (id: string, content: string) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
   getCommentsByPlate: (plateNumber: string) => Promise<Comment[]>;
+  getLatestComments: () => Promise<Comment[]>; // Add this line
   upvoteComment: (id: string, userId: string) => Promise<void>;
   downvoteComment: (id: string, userId: string) => Promise<void>;
   getCommentsByUser: (userId: string) => Promise<Comment[]>;
@@ -110,6 +113,21 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
       } as Comment);
     });
     return plateComments;
+  };
+
+  const getLatestComments = async (): Promise<Comment[]> => {
+    const q = query(collection(db, 'comments'), orderBy('createdAt', 'desc'), limit(10)); // Fetch last 10 comments
+    const querySnapshot = await getDocs(q);
+    const latestComments: Comment[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      latestComments.push({
+        ...data,
+        id: doc.id,
+        createdAt: data.createdAt.toDate(),
+      } as Comment);
+    });
+    return latestComments;
   };
 
   const upvoteComment = async (id: string, userId: string) => {
@@ -243,6 +261,7 @@ export function LocalDbProvider({ children }: { children: React.ReactNode }) {
         updateComment,
         deleteComment,
         getCommentsByPlate,
+        getLatestComments,
         upvoteComment,
         downvoteComment,
         getCommentsByUser,

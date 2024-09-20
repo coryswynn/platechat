@@ -66,18 +66,18 @@ export default function Header() {
             </>
           ) : (
             <>
-              <Button
-                onClick={() => handleSignIn(true)} // Trigger Google login for Sign Up and redirect to /signup
-                className="px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition duration-300"
-              >
-                Sign Up
-              </Button>
-              <Button
-                onClick={() => handleSignIn(false)} // Trigger Google login for Sign In and redirect to home
-                className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition duration-300"
-              >
-                Sign In
-              </Button>
+<Button
+  onClick={() => handleSignIn(true)} // Trigger Google login for Sign Up and redirect to /signup
+  className="px-6 py-3 bg-gradient-to-r from-green-400 to-green-600 text-white font-semibold rounded-full shadow-md hover:from-green-500 hover:to-green-700 hover:shadow-lg transform hover:scale-105 transition-all duration-300 ease-in-out"
+>
+  Sign Up
+</Button>
+<Button
+  onClick={() => handleSignIn(false)} // Trigger Google login for Sign In and redirect to home
+  className="px-6 py-3 bg-gradient-to-r from-blue-400 to-blue-600 text-white font-semibold rounded-full shadow-md hover:from-blue-500 hover:to-blue-700 hover:shadow-lg transform hover:scale-105 transition-all duration-300 ease-in-out"
+>
+  Sign In
+</Button>
             </>
           )}
         </div>
